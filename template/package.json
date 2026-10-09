@@ -1,0 +1,42 @@
+{
+  "name": "effect-alchemy-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare": "effect-tsgo patch",
+    "dev": "alchemy dev",
+    "deploy": "alchemy deploy",
+    "destroy": "alchemy destroy",
+    "plan": "alchemy plan",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p packages/contracts && tsc --noEmit -p apps/api && tsc --noEmit -p apps/web",
+    "lint": "oxlint",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "test": "vitest run --project unit",
+    "test:watch": "vitest --project unit",
+    "test:integ": "vitest run --project integ",
+    "knip": "knip",
+    "check": "pnpm fmt:check && pnpm lint && pnpm typecheck && pnpm test && pnpm knip",
+    "sync:repos": "node scripts/sync-repos.ts"
+  },
+  "devDependencies": {
+    "@alchemy.run/frontend-frameworks": "catalog:",
+    "@effect/platform-bun": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "@effect/tsgo": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "alchemy": "catalog:",
+    "effect": "catalog:",
+    "knip": "catalog:",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

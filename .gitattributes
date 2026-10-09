@@ -1,0 +1,4 @@
+* text=auto eol=lf
+
+# The committed CLI bundle (see scripts/bundle.ts): collapse it in diffs and GitHub PRs.
+dist/bin.mjs linguist-generated=true -diff

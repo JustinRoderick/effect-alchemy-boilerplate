@@ -1,0 +1,40 @@
+packages:
+  - apps/*
+  - packages/*
+
+# One version of each shared dependency, referenced as "catalog:" from every package.json.
+catalog:
+  "@alchemy.run/frontend-frameworks": 2.0.0-beta.81
+  "@cloudflare/workers-types": 5.20261009.1
+  "@effect/atom-react": 4.0.2
+  "@effect/platform-bun": 4.0.2
+  "@effect/platform-node": 4.0.2
+  "@effect/sql-sqlite-node": 4.0.2
+  "@effect/tsgo": 0.51.1
+  "@effect/vitest": 4.0.2
+  "@types/node": 26.6.4
+  "@types/react": 19.3.0
+  "@types/react-dom": 19.3.0
+  "@vitejs/plugin-react": 6.1.2
+  alchemy: 2.0.0-beta.81
+  effect: 4.0.2
+  knip: 6.40.0
+  oxfmt: 0.72.0
+  oxlint: 1.87.0
+  react: 19.3.0
+  react-dom: 19.3.0
+  typescript: 7.0.2
+  vite: 8.3.4
+  vitest: 5.0.3
+
+# Two copies of effect break service identity: force every dependent onto the catalog version.
+overrides:
+  effect: "catalog:"
+
+# Dependencies allowed to run install scripts (pnpm 11+ uses allowBuilds, pnpm 10 onlyBuiltDependencies).
+allowBuilds:
+  esbuild: true
+  workerd: true
+onlyBuiltDependencies:
+  - esbuild
+  - workerd

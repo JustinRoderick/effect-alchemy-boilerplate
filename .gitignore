@@ -1,0 +1,8 @@
+# Reference repos cloned for research (not part of this project)
+.repos/
+
+node_modules/
+.alchemy/
+.env
+.env.*
+!.env.example

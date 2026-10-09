@@ -1,0 +1,8 @@
+{
+  // Same strictness and Effect diagnostics as the template, for the CLI's own source.
+  "extends": "./template/tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["src", "scripts"]
+}

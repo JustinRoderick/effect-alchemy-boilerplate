@@ -1,0 +1,6 @@
+# Settings for the create-effect-alchemy package itself. template/ is a separate
+# project with its own pnpm-workspace.yaml, so it is deliberately not listed here.
+allowBuilds:
+  esbuild: true
+onlyBuiltDependencies:
+  - esbuild

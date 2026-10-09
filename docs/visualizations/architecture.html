@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Effect + Alchemy boilerplate: architecture</title>
+<style>
+  /* Base colors use a host theme's variables when present (e.g. T3's --card, --foreground)
+     and fall back to this page's own light/dark palette when opened directly. */
+  :root {
+    --bg: var(--background, #f7f7f5);
+    --panel: var(--card, #ffffff);
+    --ink: var(--foreground, #1d1d1f);
+    --dim: var(--muted-foreground, #5d5d66);
+    --line: var(--border, #dcdcd6);
+    --soft: var(--secondary, #efefeb);
+    --code: var(--code-background, #f3f2ee);
+
+    /* Category strokes are mid-tones and fills are tints, so they read on light and dark. */
+    --root: #6b7c96;      /* composition root */
+    --contract: #8462d8;  /* contracts */
+    --domain: #3b7fe0;    /* domain services */
+    --adapter: #d27a26;   /* infra adapters / bindings */
+    --transport: #1a9a88; /* transports */
+    --bad: #d9475c;
+    --good: #2f9e57;
+    --root-bg: color-mix(in srgb, var(--root) 14%, transparent);
+    --contract-bg: color-mix(in srgb, var(--contract) 14%, transparent);
+    --domain-bg: color-mix(in srgb, var(--domain) 14%, transparent);
+    --adapter-bg: color-mix(in srgb, var(--adapter) 15%, transparent);
+    --transport-bg: color-mix(in srgb, var(--transport) 14%, transparent);
+    --bad-bg: color-mix(in srgb, var(--bad) 12%, transparent);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: var(--background, #141416);
+      --panel: var(--card, #1c1c1f);
+      --ink: var(--foreground, #ececef);
+      --dim: var(--muted-foreground, #a2a2ad);
+      --line: var(--border, #34343a);
+      --soft: var(--secondary, #24242a);
+      --code: var(--code-background, #222227);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.88em; }
+  code { background: var(--code); padding: 1px 5px; border-radius: 4px; }
+  main { max-width: 1120px; margin: 0 auto; padding: 40px 24px 80px; }
+  header h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--dim); max-width: 760px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .chip { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 3px 11px; font-size: 13px; color: var(--dim); }
+  .chip b { color: var(--ink); font-weight: 600; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 22px 0 8px; font-size: 14px; }
+  nav.toc a { color: var(--dim); text-decoration: none; border-bottom: 1px dashed var(--line); }
+  nav.toc a:hover { color: var(--ink); }
+
+  section { margin-top: 44px; }
+  section > h2 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.005em; }
+  section > p.lede { margin: 0 0 16px; color: var(--dim); max-width: 820px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--dim); margin-bottom: 14px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; border: 1.5px solid; }
+  .sw.root { background: var(--root-bg); border-color: var(--root); }
+  .sw.contract { background: var(--contract-bg); border-color: var(--contract); }
+  .sw.domain { background: var(--domain-bg); border-color: var(--domain); }
+  .sw.adapter { background: var(--adapter-bg); border-color: var(--adapter); }
+  .sw.transport { background: var(--transport-bg); border-color: var(--transport); }
+
+  /* ---------- Tree explorer ---------- */
+  .explorer { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(320px, 1.15fr); gap: 18px; }
+  @media (max-width: 820px) { .explorer { grid-template-columns: 1fr; } }
+  .tree { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13.5px; line-height: 1.9; }
+  .tree button {
+    all: unset; cursor: pointer; display: block; width: 100%; border-radius: 6px;
+    padding: 0 8px; white-space: pre; color: var(--ink);
+  }
+  .tree button:hover { background: var(--soft); }
+  .tree button[aria-pressed="true"] { background: var(--soft); outline: 1.5px solid var(--line); }
+  .tree button:focus-visible { outline: 2px solid var(--domain); }
+  .tree .dim { color: var(--dim); }
+  .tree .tag { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: 1px; border: 1.5px solid; }
+  .tag.root { background: var(--root-bg); border-color: var(--root); }
+  .tag.contract { background: var(--contract-bg); border-color: var(--contract); }
+  .tag.domain { background: var(--domain-bg); border-color: var(--domain); }
+  .tag.adapter { background: var(--adapter-bg); border-color: var(--adapter); }
+  .tag.transport { background: var(--transport-bg); border-color: var(--transport); }
+  .tag.none { background: transparent; border-color: var(--line); }
+  .detail h3 { margin: 0 0 2px; font-size: 17px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .detail .kind { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); margin-bottom: 12px; }
+  .detail h4 { margin: 14px 0 4px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim); }
+  .detail ul { margin: 0; padding-left: 18px; }
+  .detail li { margin: 2px 0; }
+  .detail .src { font-size: 13px; color: var(--dim); }
+  .detail .mustnot li::marker { color: var(--bad); }
+  .detail .owns li::marker { color: var(--good); }
+
+  /* ---------- Dependency graph ---------- */
+  .graph-wrap { display: grid; grid-template-columns: 1.2fr 1fr; gap: 18px; align-items: center; }
+  @media (max-width: 820px) { .graph-wrap { grid-template-columns: 1fr; } }
+  svg text { fill: var(--ink); font-family: ui-sans-serif, system-ui, sans-serif; }
+  svg .sub { fill: var(--dim); font-size: 11px; }
+  .rules { margin: 0; padding-left: 18px; }
+  .rules li { margin: 6px 0; }
+
+  /* ---------- Layer graph ---------- */
+  .toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: var(--soft); margin-bottom: 16px; }
+  .toggle button { all: unset; cursor: pointer; padding: 5px 14px; border-radius: 999px; font-size: 13px; color: var(--dim); }
+  .toggle button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  .toggle button:focus-visible { outline: 2px solid var(--domain); }
+  .stack { display: grid; gap: 10px; }
+  .row { display: grid; grid-template-columns: 150px 1fr; gap: 14px; align-items: stretch; }
+  @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
+  .row .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim); align-self: center; }
+  .boxes { display: flex; flex-wrap: wrap; gap: 10px; }
+  .box {
+    border: 1.5px solid; border-radius: 9px; padding: 9px 12px; min-width: min(170px, 100%); flex: 1 1 170px;
+    transition: background-color .25s, border-color .25s;
+  }
+  .box .t { font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13.5px; overflow-wrap: anywhere; }
+  .box .d { font-size: 12.5px; color: var(--dim); overflow-wrap: anywhere; }
+  .box.contract { background: var(--contract-bg); border-color: var(--contract); }
+  .box.domain { background: var(--domain-bg); border-color: var(--domain); }
+  .box.adapter { background: var(--adapter-bg); border-color: var(--adapter); }
+  .box.transport { background: var(--transport-bg); border-color: var(--transport); }
+  .box.root { background: var(--root-bg); border-color: var(--root); }
+  .boundary {
+    border-top: 2px dashed var(--adapter); margin: 4px 0; position: relative; height: 0;
+  }
+  .boundary span {
+    position: absolute; right: 0; top: -11px; background: var(--panel); padding: 0 8px;
+    font-size: 12px; color: var(--adapter); font-weight: 600;
+  }
+  .note { margin-top: 14px; font-size: 13.5px; color: var(--dim); }
+  .flash { animation: flash .6s ease; }
+  @keyframes flash { from { box-shadow: 0 0 0 4px var(--adapter-bg); } to { box-shadow: none; } }
+  @media (prefers-reduced-motion: reduce) { .flash { animation: none; } .box { transition: none; } }
+
+  /* ---------- Lifecycle ---------- */
+  .phases { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; position: relative; }
+  @media (max-width: 820px) { .phases { grid-template-columns: 1fr; } }
+  .phase { padding: 16px 18px; border: 1px solid var(--line); background: var(--panel); }
+  .phase:first-child { border-radius: 12px 0 0 12px; }
+  .phase:last-child { border-radius: 0 12px 12px 0; }
+  @media (max-width: 820px) {
+    .phase:first-child { border-radius: 12px 12px 0 0; }
+    .phase:last-child { border-radius: 0 0 12px 12px; }
+  }
+  .phase h3 { margin: 0; font-size: 15px; }
+  .phase .when { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+  .phase ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
+  .phase li { margin: 4px 0; }
+  .phase .runs { display: inline-block; font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 1px 8px; margin-top: 10px; }
+  .runs.outer { background: var(--domain-bg); color: var(--domain); }
+  .runs.inner { background: var(--transport-bg); color: var(--transport); }
+  .warn { margin-top: 14px; border: 1px solid var(--bad); background: var(--bad-bg); border-radius: 10px; padding: 10px 14px; font-size: 13.5px; }
+  .warn b { color: var(--bad); }
+
+  /* ---------- Request flow ---------- */
+  .flow { display: flex; align-items: stretch; gap: 0; overflow-x: auto; padding-bottom: 6px; }
+  .step { min-width: 150px; flex: 1; border: 1.5px solid; border-radius: 9px; padding: 10px 12px; font-size: 13px; overflow-wrap: anywhere; }
+  .step .t { font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; margin-bottom: 3px; }
+  .step .d { color: var(--dim); font-size: 12.5px; }
+  .arrow { display: flex; align-items: center; padding: 0 6px; color: var(--dim); font-size: 18px; }
+  .errors { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+  @media (max-width: 720px) { .errors { grid-template-columns: 1fr; } }
+  .err { border-radius: 10px; padding: 12px 14px; border: 1px solid var(--line); background: var(--soft); font-size: 13.5px; }
+  .err h4 { margin: 0 0 4px; font-size: 13.5px; }
+  .err.expected h4 { color: var(--domain); }
+  .err.defect h4 { color: var(--bad); }
+
+  /* ---------- Anatomy ---------- */
+  .anatomy { display: grid; grid-template-columns: 1.3fr 1fr; gap: 18px; }
+  @media (max-width: 900px) { .anatomy { grid-template-columns: 1fr; } }
+  .codeblock { background: var(--code); border-radius: 10px; padding: 0; overflow: hidden; border: 1px solid var(--line); }
+  .band { display: grid; grid-template-columns: 6px 1fr; }
+  .band .bar { background: var(--line); }
+  .band pre { margin: 0; padding: 8px 14px; overflow-x: auto; font-size: 12.5px; line-height: 1.5; }
+  .band.b1 .bar { background: var(--root); }
+  .band.b2 .bar { background: var(--bad); }
+  .band.b3 .bar { background: var(--contract); }
+  .band.b4 .bar { background: var(--domain); }
+  .band.b5 .bar { background: var(--transport); }
+  .band + .band { border-top: 1px solid var(--line); }
+  .anno ol { margin: 0; padding-left: 20px; }
+  .anno li { margin: 0 0 12px; }
+  .anno li b { display: block; }
+  .anno .k1::marker { color: var(--root); font-weight: 700; }
+  .anno .k2::marker { color: var(--bad); font-weight: 700; }
+  .anno .k3::marker { color: var(--contract); font-weight: 700; }
+  .anno .k4::marker { color: var(--domain); font-weight: 700; }
+  .anno .k5::marker { color: var(--transport); font-weight: 700; }
+
+  /* ---------- Matrix ---------- */
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim); font-weight: 600; }
+  td.pick { font-weight: 600; background: var(--soft); }
+  tbody tr:hover td { background: var(--soft); }
+  .table-scroll { overflow-x: auto; }
+  footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Effect + Alchemy boilerplate: architecture</h1>
+    <p>How a project built from this boilerplate is laid out, how its layers fit together, and how a request moves through it. The layout combines the structure of Effect's own repo, Alchemy's file-layout guide, and t3code's production Cloudflare Worker (<code>infra/relay</code>).</p>
+    <div class="chips">
+      <span class="chip"><b>effect</b> 4.0.x LTS</span>
+      <span class="chip"><b>alchemy</b> 2.0.0-beta.8x</span>
+      <span class="chip"><b>@effect/vitest</b> 4.0.x</span>
+      <span class="chip"><b>TypeScript</b> 7 + @effect/tsgo</span>
+      <span class="chip"><b>Node</b> 24</span>
+    </div>
+    <nav class="toc" aria-label="Sections">
+      <a href="#map">Monorepo map</a>
+      <a href="#deps">Dependency rules</a>
+      <a href="#layers">Layer graph</a>
+      <a href="#phases">Worker phases</a>
+      <a href="#flow">Request flow</a>
+      <a href="#anatomy">Service anatomy</a>
+      <a href="#matrix">Convention matrix</a>
+    </nav>
+  </header>
+
+  <!-- ===================== MAP ===================== -->
+  <section id="map">
+    <h2>1. Monorepo map</h2>
+    <p class="lede">Select a path to see what it owns, what it must not do, and which codebase the convention comes from.</p>
+    <div class="legend">
+      <span><i class="sw root"></i>composition root</span>
+      <span><i class="sw contract"></i>contracts</span>
+      <span><i class="sw transport"></i>transport</span>
+      <span><i class="sw domain"></i>domain service</span>
+      <span><i class="sw adapter"></i>infrastructure / adapter</span>
+    </div>
+    <div class="explorer">
+      <div class="card tree" id="tree" role="list" aria-label="Project tree"></div>
+      <div class="card detail" id="detail" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <!-- ===================== DEPS ===================== -->
+  <section id="deps">
+    <h2>2. Dependency rules</h2>
+    <p class="lede">Imports flow one way, toward <code>@app/contracts</code>. Only <code>alchemy.run.ts</code> reaches into <code>apps/*</code>, and it does so to deploy them.</p>
+    <div class="card graph-wrap">
+      <svg viewBox="0 0 640 400" role="img" aria-labelledby="depTitle depDesc">
+        <title id="depTitle">Package dependency graph</title>
+        <desc id="depDesc">alchemy.run.ts imports apps/api and deploys apps/web. Both apps import packages/shared and packages/contracts. packages/shared imports packages/contracts. packages/contracts depends only on effect.</desc>
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--dim)"></path>
+          </marker>
+        </defs>
+        <!-- edges -->
+        <g stroke="var(--dim)" stroke-width="1.6" fill="none" marker-end="url(#ah)">
+          <path d="M290,72 L190,140"></path>
+          <path d="M350,72 L450,140" stroke-dasharray="5 4"></path>
+          <path d="M170,196 L292,330"></path>
+          <path d="M470,196 L348,330"></path>
+          <path d="M200,196 L290,252"></path>
+          <path d="M440,196 L350,252"></path>
+          <path d="M320,300 L320,326"></path>
+        </g>
+        <text x="415" y="102" class="sub">deploys (rootDir)</text>
+        <!-- nodes -->
+        <g>
+          <rect x="235" y="22" width="170" height="50" rx="9" fill="var(--root-bg)" stroke="var(--root)" stroke-width="1.6"></rect>
+          <text x="320" y="44" text-anchor="middle" font-weight="600" font-size="14">alchemy.run.ts</text>
+          <text x="320" y="61" text-anchor="middle" class="sub">Stack · providers · state</text>
+
+          <rect x="70" y="142" width="200" height="54" rx="9" fill="var(--domain-bg)" stroke="var(--domain)" stroke-width="1.6"></rect>
+          <text x="170" y="165" text-anchor="middle" font-weight="600" font-size="14">apps/api</text>
+          <text x="170" y="182" text-anchor="middle" class="sub">Worker + domain services</text>
+
+          <rect x="370" y="142" width="200" height="54" rx="9" fill="var(--transport-bg)" stroke="var(--transport)" stroke-width="1.6"></rect>
+          <text x="470" y="165" text-anchor="middle" font-weight="600" font-size="14">apps/web</text>
+          <text x="470" y="182" text-anchor="middle" class="sub">Vite SPA · typed client</text>
+
+          <rect x="240" y="254" width="160" height="46" rx="9" fill="var(--soft)" stroke="var(--line)" stroke-width="1.6"></rect>
+          <text x="320" y="275" text-anchor="middle" font-weight="600" font-size="13.5">packages/shared</text>
+          <text x="320" y="291" text-anchor="middle" class="sub">pure helpers (optional)</text>
+
+          <rect x="215" y="328" width="210" height="54" rx="9" fill="var(--contract-bg)" stroke="var(--contract)" stroke-width="1.6"></rect>
+          <text x="320" y="351" text-anchor="middle" font-weight="600" font-size="14">packages/contracts</text>
+          <text x="320" y="368" text-anchor="middle" class="sub">Schema · errors · HttpApi</text>
+        </g>
+      </svg>
+      <ul class="rules">
+        <li><b>contracts</b> holds wire types: <code>Schema</code> models, branded IDs, <code>Schema.TaggedError</code>, <code>HttpApi</code>/<code>RpcGroup</code>. It does no I/O and has no runtime logic.</li>
+        <li><b>shared</b> exists only once two packages need the same pure helper. It uses subpath exports and no barrel.</li>
+        <li><b>apps</b> never import each other. The web app's types for the API come from <code>contracts</code>, through <code>HttpApiClient.make(AppApi)</code>.</li>
+        <li><b>alchemy.run.ts</b> is the only file that imports from <code>apps/*</code>, and only the Worker class it deploys.</li>
+        <li>All packages export <code>./src/*.ts</code> directly, so no build step is needed (as in t3code and Alchemy).</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===================== LAYERS ===================== -->
+  <section id="layers">
+    <h2>3. Layer graph inside the Worker</h2>
+    <p class="lede">Domain services depend on <em>ports</em>: Effect services such as <code>SqlClient</code> and <code>AppConfig</code>. Only the composition root decides which <em>adapter</em> backs each port. Switch the view to see the same services run in production and in a unit test.</p>
+    <div class="card">
+      <div class="toggle" role="group" aria-label="Environment">
+        <button type="button" data-env="prod" aria-pressed="true">Production (Cloudflare)</button>
+        <button type="button" data-env="test" aria-pressed="false">Unit test (@effect/vitest)</button>
+      </div>
+      <div class="stack" id="layerStack">
+        <div class="row">
+          <div class="label">Entry points</div>
+          <div class="boxes">
+            <div class="box transport"><div class="t" data-k="entry1"></div><div class="d" data-k="entry1d"></div></div>
+            <div class="box transport"><div class="t" data-k="entry2"></div><div class="d" data-k="entry2d"></div></div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">Transport</div>
+          <div class="boxes">
+            <div class="box transport"><div class="t">todos/http.ts</div><div class="d">HttpApiBuilder.group(AppApi, "todos"): decode → one call → map errors</div></div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">Domain</div>
+          <div class="boxes">
+            <div class="box domain"><div class="t">Todos</div><div class="d">business rules · Effect.fn("Todos.*") spans</div></div>
+            <div class="box domain"><div class="t">TodoRepo</div><div class="d">SqlSchema queries · infra errors → defects</div></div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">Ports</div>
+          <div class="boxes">
+            <div class="box contract"><div class="t">SqlClient.SqlClient</div><div class="d">effect/sql</div></div>
+            <div class="box contract"><div class="t">AppConfig</div><div class="d">typed config service</div></div>
+          </div>
+        </div>
+        <div class="boundary"><span>composition root decides ↓</span></div>
+        <div class="row">
+          <div class="label">Adapters</div>
+          <div class="boxes">
+            <div class="box adapter" id="ad1"><div class="t" data-k="ad1"></div><div class="d" data-k="ad1d"></div></div>
+            <div class="box adapter" id="ad2"><div class="t" data-k="ad2"></div><div class="d" data-k="ad2d"></div></div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">Provided by</div>
+          <div class="boxes">
+            <div class="box root"><div class="t" data-k="root"></div><div class="d" data-k="rootd"></div></div>
+          </div>
+        </div>
+      </div>
+      <p class="note" id="layerNote"></p>
+    </div>
+  </section>
+
+  <!-- ===================== PHASES ===================== -->
+  <section id="phases">
+    <h2>4. Worker phases</h2>
+    <p class="lede">The Worker's outer generator (Construction) runs twice: once when you deploy, and once per cold start. The inner <code>fetch</code> runs per request. The rules for Config, bindings, and resources follow from this.</p>
+    <div class="phases">
+      <div class="phase">
+        <div class="when">① alchemy deploy / plan</div>
+        <h3>Construction, on your machine or in CI</h3>
+        <ul>
+          <li><code>QueryDatabase(Database)</code> <b>registers</b> the D1 binding</li>
+          <li><code>Config.*</code> reads are <b>recorded and bound</b> as Worker secrets</li>
+          <li>Resources yielded here are created or updated (D1, queues, …)</li>
+          <li>Runtime-only client methods are blocked by types (<code>RuntimeContext</code>)</li>
+        </ul>
+        <span class="runs outer">outer Effect.gen</span>
+      </div>
+      <div class="phase">
+        <div class="when">② cold start in workerd</div>
+        <h3>Construction, inside the isolate</h3>
+        <ul>
+          <li>The same code now <b>returns real clients</b> for the bindings</li>
+          <li>Config resolves from the bound secrets</li>
+          <li>The runtime layer and the HttpApi router are built once</li>
+          <li>Don't open connections or pools here: they're per request</li>
+        </ul>
+        <span class="runs outer">outer Effect.gen</span>
+      </div>
+      <div class="phase">
+        <div class="when">③ every request</div>
+        <h3>Runtime: <code>fetch</code></h3>
+        <ul>
+          <li>HttpApi decodes the request using the contract</li>
+          <li>Handler → service method → repository → <code>SqlClient</code> (D1)</li>
+          <li>The D1 client is built lazily once per execution and released after</li>
+          <li>Queue consumers and crons share the same <code>layerRuntime</code></li>
+        </ul>
+        <span class="runs inner">inner fetch Effect</span>
+      </div>
+    </div>
+    <div class="warn"><b>The documented footgun:</b> a <code>Config</code> read only inside <code>fetch</code> is never bound to the deployed Worker. Read config in Construction and pass it in as a typed service (<code>AppConfig.layer(config)</code>).</div>
+  </section>
+
+  <!-- ===================== FLOW ===================== -->
+  <section id="flow">
+    <h2>5. Request flow and the error channel</h2>
+    <p class="lede"><code>POST /todos/:id/complete</code> from request to response. Each hop has one job, and errors are typed until a transport decides what they mean.</p>
+    <div class="card">
+      <div class="flow" role="list">
+        <div class="step transport" role="listitem" style="background:var(--transport-bg);border-color:var(--transport)"><div class="t">HttpRouter</div><div class="d">matches the route from <code>AppApi</code></div></div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="step" role="listitem" style="background:var(--contract-bg);border-color:var(--contract)"><div class="t">Contract decode</div><div class="d">params, payload → branded <code>TodoId</code></div></div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="step" role="listitem" style="background:var(--transport-bg);border-color:var(--transport)"><div class="t">todos/http.ts</div><div class="d"><code>todos.complete(params.id)</code>, nothing else</div></div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="step" role="listitem" style="background:var(--domain-bg);border-color:var(--domain)"><div class="t">Todos.complete</div><div class="d"><code>Effect.fn</code> span · business rules</div></div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="step" role="listitem" style="background:var(--domain-bg);border-color:var(--domain)"><div class="t">TodoRepo</div><div class="d"><code>SqlSchema</code> encode/decode</div></div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="step" role="listitem" style="background:var(--adapter-bg);border-color:var(--adapter)"><div class="t">SqlClient → D1</div><div class="d">via <code>SQL.D1Layer(d1)</code></div></div>
+      </div>
+      <div class="errors">
+        <div class="err expected">
+          <h4>Expected error → typed channel</h4>
+          <code>return yield* new TodoNotFound({ id })</code> stays in <code>E</code> all the way up. Because the contract declares it with <code>{ httpApiStatus: 404 }</code>, the client receives a typed <code>TodoNotFound</code>. Handle it with <code>Effect.catchTags</code>.
+        </div>
+        <div class="err defect">
+          <h4>Infrastructure failure → defect</h4>
+          A <code>SqlError</code> or <code>SchemaError</code> in <code>TodoRepo</code> becomes a defect (<code>Effect.orDie</code>), so domain interfaces only list errors a caller can act on. HTTP turns defects into 500s, and the span records the cause.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ANATOMY ===================== -->
+  <section id="anatomy">
+    <h2>6. Anatomy of a service module</h2>
+    <p class="lede">One file per service, always in the same order. This is the shape of t3code's <code>WorkspacePaths.ts</code> and the relay's <code>Devices.ts</code>.</p>
+    <div class="anatomy">
+      <div class="codeblock" aria-label="Annotated service module">
+        <div class="band b1"><div class="bar"></div><pre>import type { CreateTodo, Todo } from "@app/contracts/todos";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
+import * as AppConfig from "../AppConfig.ts";
+import * as TodoRepo from "./TodoRepo.ts";</pre></div>
+        <div class="band b2"><div class="bar"></div><pre>export class TodoLimitReached extends Schema.TaggedError&lt;TodoLimitReached&gt;()(
+  "TodoLimitReached",
+  { limit: Schema.Number },
+) {
+  override get message() { return `Todo limit of ${this.limit} reached.`; }
+}</pre></div>
+        <div class="band b3"><div class="bar"></div><pre>export class Todos extends Context.Service&lt;
+  Todos,
+  {
+    readonly create: (input: CreateTodo) =&gt; Effect.Effect&lt;Todo, TodoLimitReached&gt;;
+  }
+&gt;()("@app/api/todos/Todos") {}</pre></div>
+        <div class="band b4"><div class="bar"></div><pre>const make = Effect.gen(function* () {
+  const repo = yield* TodoRepo.TodoRepo;      // deps via yield*, never params
+  const config = yield* AppConfig.AppConfig;
+
+  const create: Todos["Service"]["create"] = Effect.fn("Todos.create")(function* (input) {
+    const existing = yield* repo.list;
+    if (existing.length &gt;= config.maxTodos) {
+      return yield* new TodoLimitReached({ limit: config.maxTodos });
+    }
+    // ...
+  });
+
+  return Todos.of({ create });
+});</pre></div>
+        <div class="band b5"><div class="bar"></div><pre>export const layer = Layer.effect(Todos, make);</pre></div>
+      </div>
+      <div class="anno card">
+        <ol>
+          <li class="k1"><b>Namespace imports, one module at a time</b>Write <code>import * as Effect from "effect/Effect"</code>. Import your own services the same way, then use <code>TodoRepo.TodoRepo</code> and <code>TodoRepo.layer</code>.</li>
+          <li class="k2"><b>Errors first</b>Use <code>Schema.TaggedError</code> with bounded attributes. Build the message from those attributes, never from <code>cause</code>. Wrap underlying failures in <code>cause: Schema.Defect()</code>.</li>
+          <li class="k3"><b>The tag, with its interface inline</b>Don't write a separate <code>TodosShape</code>; refer to the type as <code>Todos["Service"]</code>. Give the tag an id like <code>"&lt;pkg&gt;/&lt;path&gt;/&lt;Name&gt;"</code>.</li>
+          <li class="k4"><b>make</b>Get dependencies with <code>yield*</code> so the layer's type lists them. Each method is <code>Effect.fn("Service.method")</code>, which gives you a span. Return <code>Tag.of({...})</code>.</li>
+          <li class="k5"><b>layer</b>Use <code>layer</code> for the primary implementation, and <code>layerTest</code>, <code>layerMemory</code>, or <code>layer&lt;Adapter&gt;</code> for variants. Keep <code>make</code> private unless another module imports it, since knip fails on unused exports.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== MATRIX ===================== -->
+  <section id="matrix">
+    <h2>7. Convention matrix</h2>
+    <p class="lede">Where the reference codebases disagree, the last column is what the boilerplate uses.</p>
+    <div class="card table-scroll">
+      <table>
+        <thead>
+          <tr><th>Topic</th><th>Effect repo</th><th>Alchemy</th><th>t3code</th><th>Boilerplate</th></tr>
+        </thead>
+        <tbody id="matrixBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    Sources: Effect-TS/effect (LLMS.md, migration/, ai-docs/), alchemy-run/alchemy (AGENTS.md, website docs, examples/), pingdotgg/t3code (docs/internals/effect-services.md, apps/server, infra/relay). See <code>docs/01-reference-codebases.md</code> for citations.
+  </footer>
+</main>
+
+<script>
+  // ---------- Monorepo map ----------
+  const T = (kind, text, info) => ({ kind, text, info });
+  const tree = [
+    T("root", "alchemy.run.ts", {
+      title: "alchemy.run.ts", kind: "Composition root",
+      owns: ["Naming the Stack", "Merging providers (Cloudflare.providers(), …)", "Choosing a state store (Cloudflare.state())", "Yielding top-level units and returning outputs"],
+      mustNot: ["Hold resource definitions or runtime code", "Contain stage if/else (put that next to the resource)"],
+      src: "Alchemy file-layout.mdx: \"If alchemy.run.ts is growing, something is missing a home in src/.\""
+    }),
+    T("none", "pnpm-workspace.yaml", {
+      title: "pnpm-workspace.yaml", kind: "Tooling",
+      owns: ["Workspace globs: apps/*, packages/*", "Catalog: effect, @effect/*, alchemy pinned once", "overrides: effect → catalog (one copy in the graph)"],
+      mustNot: ["Let packages pin their own effect version"],
+      src: "t3code and Alchemy both pin Effect through catalog plus overrides."
+    }),
+    T("none", "tsconfig.base.json", {
+      title: "tsconfig.base.json", kind: "Tooling",
+      owns: ["Strict flags: noUncheckedIndexedAccess, exactOptionalPropertyTypes", "NodeNext + .ts imports + erasableSyntaxOnly", "@effect/language-service diagnostics set to error"],
+      mustNot: ["Rely on the editor alone. Run effect-tsgo patch so tsc enforces the diagnostics"],
+      src: "Adapted from t3code's tsconfig.base.json."
+    }),
+    T("none", "AGENTS.md  ·  .repos/", {
+      title: "AGENTS.md + .repos/", kind: "Agent context",
+      owns: ["A short rules file for coding agents (CLAUDE.md → @AGENTS.md)", "Read-only, gitignored clones of effect and alchemy at the installed versions"],
+      mustNot: ["Import from or edit .repos/", "Document what the code already says"],
+      src: "t3code AGENTS.md: \"Prefer their patterns over invented ones. Never edit or import from them.\""
+    }),
+    T("contract", "packages/contracts/", {
+      title: "packages/contracts", kind: "Contracts",
+      owns: ["Schema models + branded IDs (TodoId)", "Wire errors: Schema.TaggedError with { httpApiStatus }", "HttpApi / HttpApiGroup / RpcGroup definitions", "Middleware tags (HttpApiMiddleware.Service)"],
+      mustNot: ["Import from apps/*", "Do I/O or contain heavy runtime logic", "Depend on anything except effect"],
+      src: "Effect ai-docs: keep the API contract separate, \"ideally a separate package\". t3code: \"Anything crossing the wire is typed in packages/contracts.\""
+    }),
+    T("contract", "  src/api.ts  todos.ts  ids.ts", {
+      title: "contracts/src/*.ts", kind: "Contracts",
+      owns: ["One module per domain (camelCase)", "export const X = Schema…; export type X = typeof X.Type", "Subpath exports: @app/contracts/todos"],
+      mustNot: ["Add a root barrel"],
+      src: "t3code packages/contracts/src/*.ts (relay.ts, rpc.ts, environmentHttp.ts)."
+    }),
+    T("none", "packages/shared/", {
+      title: "packages/shared", kind: "Shared helpers (optional)",
+      owns: ["Pure, platform-neutral helpers used by two or more packages"],
+      mustNot: ["Exist before it's needed", "Have a root barrel (use one subpath export per module)"],
+      src: "t3code: \"shared runtime utils, subpath exports, no barrel.\""
+    }),
+    T("domain", "apps/api/", {
+      title: "apps/api", kind: "Deployable: Cloudflare Worker",
+      owns: ["The Worker and the resources it binds", "Domain folders of services", "migrations/ for D1", "test/ for deploy-level integration tests"],
+      mustNot: ["Be imported by other apps"],
+      src: "Modeled on t3code infra/relay."
+    }),
+    T("adapter", "  src/ApiWorker.ts", {
+      title: "ApiWorker.ts", kind: "Worker: wiring only",
+      owns: ["1) Binding resources: QueryDatabase(Database)", "2) Reading Config: bound as secrets", "3) Adapting bindings into ports: SQL.D1Layer(d1)", "Composing layerRuntime; serving HttpApi via HttpRouter.toHttpEffect", "Registering queue consumers and crons on the same runtime"],
+      mustNot: ["Contain business rules", "Read Config inside fetch (it won't be bound)", "Open pools or connections during construction"],
+      src: "t3code infra/relay/src/worker.ts uses the same three labelled sections."
+    }),
+    T("adapter", "  src/Database.ts", {
+      title: "Database.ts", kind: "Resource declaration",
+      owns: ["export const Database = Cloudflare.D1.Database(\"Database\", { migrations })", "Stage-aware choices for this resource"],
+      mustNot: ["Import runtime or domain code", "Use cwd-relative paths (anchor to import.meta.dirname)"],
+      src: "Alchemy file-layout.mdx: one file per Resource, or group Resources that share a lifecycle."
+    }),
+    T("domain", "  src/AppConfig.ts", {
+      title: "AppConfig.ts", kind: "Config service",
+      owns: ["AppConfig Context.Service with typed fields (Redacted for secrets)", "fromEnv: Config.all({...}) for the Worker to yield", "layer(values) → Layer.succeed"],
+      mustNot: ["Be read with process.env anywhere else"],
+      src: "t3code infra/relay/src/Config.ts (RelayConfiguration)."
+    }),
+    T("domain", "  src/todos/", {
+      title: "src/todos/", kind: "Domain folder",
+      owns: ["A flat folder: one module per service, tests next to code", "The domain's HTTP handlers in http.ts"],
+      mustNot: ["Split into Services/ and Layers/ folders", "Import alchemy/* or Cloudflare bindings"],
+      src: "t3code commit 3d17862e58: \"one module per service instead of Services/ and Layers/ folders\"."
+    }),
+    T("domain", "    Todos.ts  Todos.test.ts", {
+      title: "Todos.ts", kind: "Domain service",
+      owns: ["Errors → Context.Service tag → make → layer", "Every method: Effect.fn(\"Todos.method\")", "Business rules and typed domain errors"],
+      mustNot: ["Take services as make parameters", "Call Effect.runPromise", "Use Date.now / Math.random / console / fetch"],
+      src: "t3code docs/internals/effect-services.md."
+    }),
+    T("domain", "    TodoRepo.ts", {
+      title: "TodoRepo.ts", kind: "Persistence service",
+      owns: ["Queries written against SqlClient.SqlClient (a port)", "Row schemas private to the module (e.g. BooleanFromBit)", "Turning SqlError/SchemaError into defects at this boundary"],
+      mustNot: ["Know that the database is D1", "Leak SqlError into domain interfaces"],
+      src: "Effect ai-docs 40_sql/10_basics.ts; Alchemy SQL.D1Layer docs: \"cloud-agnostic services written against SqlClient\"."
+    }),
+    T("transport", "    http.ts", {
+      title: "todos/http.ts", kind: "Transport",
+      owns: ["HttpApiBuilder.group(AppApi, \"todos\", …)", "Per endpoint: decode → one service call → map errors"],
+      mustNot: ["Contain retries, persistence, or multi-step logic", "Add its own spans or metrics"],
+      src: "t3code AGENTS.md: \"Server features are services; transports stay thin.\""
+    }),
+    T("none", "  test/api.integ.test.ts", {
+      title: "test/*.integ.test.ts", kind: "Deploy test",
+      owns: ["Test.make({ providers, state }) → deploy(Stack)", "Calling the live URL with HttpApiClient.make(AppApi)"],
+      mustNot: ["Run in the default unit test project (it takes minutes and creates real resources)"],
+      src: "Alchemy examples/*/test/integ.test.ts, alchemy/Test/Vitest."
+    }),
+    T("transport", "apps/web/", {
+      title: "apps/web", kind: "Client",
+      owns: ["UI", "One API client: lib/ApiClient.ts (an AtomHttpApi.Service that owns the app's runtime)", "Query and mutation atoms derived from @app/contracts (todos/atoms.ts)"],
+      mustNot: ["Create a runtime per feature", "Hand-write fetch calls for endpoints that exist in the contract"],
+      src: "t3code: \"Don't create a managed or Atom runtime per feature.\""
+    }),
+  ];
+
+  const treeEl = document.getElementById("tree");
+  const detailEl = document.getElementById("detail");
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const kindLabel = { root: "composition root", contract: "contracts", domain: "domain", adapter: "infrastructure", transport: "transport", none: "" };
+
+  function renderDetail(node) {
+    const i = node.info;
+    detailEl.innerHTML = `
+      <h3>${esc(i.title)}</h3>
+      <div class="kind">${esc(i.kind)}</div>
+      <h4>Owns</h4><ul class="owns">${i.owns.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+      <h4>Must not</h4><ul class="mustnot">${i.mustNot.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+      <h4>Source</h4><p class="src">${esc(i.src)}</p>`;
+  }
+
+  tree.forEach((node, idx) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role", "listitem");
+    b.setAttribute("aria-pressed", idx === 0 ? "true" : "false");
+    const indent = node.text.match(/^\s*/)[0];
+    b.innerHTML = `${indent}<i class="tag ${node.kind}"></i>${esc(node.text.trim())}`;
+    b.addEventListener("click", () => {
+      treeEl.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", "false"));
+      b.setAttribute("aria-pressed", "true");
+      renderDetail(node);
+    });
+    treeEl.appendChild(b);
+  });
+  renderDetail(tree[0]);
+
+  // ---------- Layer graph toggle ----------
+  const envs = {
+    prod: {
+      entry1: "fetch", entry1d: "HttpRouter.toHttpEffect(HttpApiBuilder.layer(AppApi))",
+      entry2: "queue · cron", entry2d: "consumeQueueMessages / Workers.cron, same layerRuntime",
+      ad1: "SQL.D1Layer(d1)", ad1d: "D1 binding from Cloudflare.D1.QueryDatabase(Database)",
+      ad2: "AppConfig.layer(config)", ad2d: "values from Config.* read during construction (bound as secrets)",
+      root: "ApiWorker.ts", rootd: "Layer.empty.pipe(Layer.provideMerge(Todos.layer), …, Layer.provideMerge(SQL.D1Layer(d1)))",
+      note: "In production the Worker adapts Cloudflare bindings into Effect services. Todos and TodoRepo never import alchemy, so they don't know they're running on D1."
+    },
+    test: {
+      entry1: "it.effect", entry1d: "@effect/vitest, with a Scope provided, TestClock available",
+      entry2: "HttpApiTest.groups", entry2d: "a typed client wired straight to the handler layers, with no server",
+      ad1: "SqliteClient.layer({ filename: \":memory:\" })", ad1d: "@effect/sql-sqlite-node + a schema layer",
+      ad2: "AppConfig.layer({ maxTodos: 2, … })", ad2d: "literal values, so tests decide the limits",
+      root: "Todos.test.ts", rootd: "it.layer(layerTest)(…). Same service layers; only the adapters change",
+      note: "In tests the exact same Todos.layer and TodoRepo.layer run. Only the bottom row changes. There are no mocks of the logic under test, and no sleeps."
+    }
+  };
+  const stackEl = document.getElementById("layerStack");
+  const noteEl = document.getElementById("layerNote");
+  function setEnv(env, animate) {
+    const v = envs[env];
+    stackEl.querySelectorAll("[data-k]").forEach((el) => { el.textContent = v[el.dataset.k]; });
+    noteEl.textContent = v.note;
+    document.querySelectorAll(".toggle button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.env === env)));
+    if (animate) ["ad1", "ad2"].forEach((id) => {
+      const el = document.getElementById(id);
+      el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+    });
+  }
+  document.querySelectorAll(".toggle button").forEach((b) => b.addEventListener("click", () => setEnv(b.dataset.env, true)));
+  setEnv("prod", false);
+
+  // ---------- Matrix ----------
+  const matrix = [
+    ["Effect imports", "ai-docs: import { Effect } from \"effect\"; library: namespace per module", "import * as Effect from \"effect/Effect\"", "Namespace per module (LSP-enforced)", "Namespace per module"],
+    ["Service definition", "Context.Service class + static layer", "Context.Service + Layer.effect", "Context.Service + module make / layer", "Module-level make + layer"],
+    ["Service id", "\"myapp/db/Database\"", "\"app/Auth\"", "\"t3/area/Name\"", "\"@app/<pkg>/<area>/<Name>\""],
+    ["Errors", "Schema.TaggedError", "Data.TaggedError (internal), Schema.TaggedError (wire)", "Schema.TaggedError + cause: Schema.Defect()", "Schema.TaggedError everywhere"],
+    ["Catching", "catchTag / catchTags / catchReason", "catchTag / catchTags", "catchTags only (lint)", "catchTags"],
+    ["Functions", "Effect.fn(\"name\") / fnUntraced", "Effect.fn everywhere", "Effect.fn(\"Service.method\")", "Effect.fn(\"Service.method\")"],
+    ["Folders", "One module per file + internal/", "One file per Resource", "Flat domain folders (no Services/Layers split)", "Flat domain folders"],
+    ["Tests", "test/ mirrors src/", "test/ deploys the Stack", "Colocated Foo.test.ts, it.layer", "Colocated unit + test/ for deploy"],
+    ["Package exports", "Generated barrel", "./* → ./src/*.ts", "Subpath exports, no barrel", "Subpath exports to .ts source"],
+    ["Format / lint", "dprint + oxlint", "oxfmt + oxlint (effecttsgo)", "vite-plus: oxfmt + oxlint + custom plugin", "oxfmt + oxlint + @effect/tsgo"],
+  ];
+  document.getElementById("matrixBody").innerHTML = matrix.map((r) =>
+    `<tr><td><b>${esc(r[0])}</b></td><td>${esc(r[1])}</td><td>${esc(r[2])}</td><td>${esc(r[3])}</td><td class="pick">${esc(r[4])}</td></tr>`
+  ).join("");
+</script>
+</body>
+</html>

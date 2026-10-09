@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // Exported types are part of the contract surface even before something uses them.
+  "rules": { "types": "off", "nsTypes": "off" },
+  "workspaces": {
+    ".": {
+      "entry": ["alchemy.run.ts"],
+      // The tsconfig plugin is built into @effect/tsgo, which `prepare` patches in.
+      "ignoreDependencies": ["@effect/language-service"],
+    },
+    "apps/api": {
+      "entry": ["src/ApiWorker.ts", "test/**/*.ts"],
+    },
+    "packages/*": {
+      // An export nobody imports is dead code, even in a shared package.
+      "includeEntryExports": true,
+    },
+  },
+}

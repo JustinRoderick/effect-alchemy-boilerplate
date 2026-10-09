@@ -1,0 +1,57 @@
+{
+  "name": "create-effect-alchemy",
+  "version": "0.1.0",
+  "description": "Scaffold a full-stack Effect v4 + Alchemy v2 app on Cloudflare",
+  "keywords": [
+    "alchemy",
+    "cloudflare",
+    "create",
+    "effect",
+    "template"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JustinRoderick/effect-alchemy-boilerplate.git"
+  },
+  "bin": {
+    "create-effect-alchemy": "./dist/bin.mjs"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "template",
+    "!template/.alchemy",
+    "!template/.repos",
+    "!template/**/*.tsbuildinfo",
+    "!template/**/.env"
+  ],
+  "type": "module",
+  "scripts": {
+    "prepublishOnly": "npm run bundle:check",
+    "bundle": "node scripts/bundle.ts",
+    "bundle:check": "node scripts/bundle.ts --check",
+    "dev": "node src/bin.ts",
+    "typecheck": "effect-tsgo patch >/dev/null && tsc --noEmit",
+    "lint": "oxlint",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "test": "vitest run",
+    "check": "pnpm fmt:check && pnpm lint && pnpm typecheck && pnpm test && pnpm bundle:check"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "4.0.2",
+    "@effect/tsgo": "0.51.1",
+    "@effect/vitest": "4.0.2",
+    "@types/node": "26.6.4",
+    "effect": "4.0.2",
+    "esbuild": "0.28.2",
+    "oxfmt": "0.72.0",
+    "oxlint": "1.87.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+
+# Alchemy local state (dev stages and local deploys)
+.alchemy/
+
+# Secrets: commit .env.example, never .env
+.env
+.env.*
+!.env.example
+
+# Read-only reference clones for agents (see AGENTS.md)
+.repos/
