@@ -271,12 +271,15 @@ const make = (source: { readonly templateDir: string; readonly docsDir: string }
       yield* ensureEmpty(directory);
 
       const name = Template.toPackageName(path.basename(directory));
+      const workspaceYaml = yield* readTemplateFile("pnpm-workspace.yaml");
+      const catalog = Template.parseCatalog(workspaceYaml);
       const settings: Template.ProjectSettings = {
         name,
         stackName: Template.toStackName(name),
         packageManager: options.packageManager,
         packageManagerVersion: yield* packageManagerVersion(options),
-        catalog: Template.parseCatalog(yield* readTemplateFile("pnpm-workspace.yaml")),
+        catalog,
+        overrides: Template.parseOverrides(workspaceYaml, catalog),
       };
 
       for (const file of yield* listFiles(source.templateDir)) {
