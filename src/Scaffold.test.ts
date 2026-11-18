@@ -88,6 +88,9 @@ describe("Scaffold", () => {
       assert.property(root, "trustedDependencies");
       const workspaces = root["workspaces"];
       assert.isObject(workspaces);
+      const overrides = root["overrides"];
+      assert.isObject(overrides);
+      assert.deepInclude(overrides, { effect: "4.0.2", hono: "^4.13.16" });
     }).pipe(Effect.provide(layerTest)),
   );
 

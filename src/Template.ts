@@ -16,6 +16,8 @@ export interface ProjectSettings {
   readonly packageManagerVersion: string;
   /** The template's dependency catalog (package name → exact version). */
   readonly catalog: Readonly<Record<string, string>>;
+  /** The template's dependency overrides (package name → version range). */
+  readonly overrides: Readonly<Record<string, string>>;
 }
 
 export type PackageJson = Record<string, unknown>;
@@ -53,24 +55,39 @@ export const toStackName = (packageName: string): string => {
  * Reads the `catalog:` block of the template's pnpm-workspace.yaml. Only the flat
  * `name: version` form the template uses is supported.
  */
-export const parseCatalog = (workspaceYaml: string): Record<string, string> => {
-  const catalog: Record<string, string> = {};
-  let inCatalog = false;
+export const parseCatalog = (workspaceYaml: string): Record<string, string> =>
+  parseBlock(workspaceYaml, "catalog:");
+
+/**
+ * Reads the `overrides:` block of the template's pnpm-workspace.yaml, resolving
+ * `catalog:` entries, so bun and npm projects get the same overrides as pnpm.
+ */
+export const parseOverrides = (
+  workspaceYaml: string,
+  catalog: Readonly<Record<string, string>>,
+): Record<string, string> =>
+  mapValues(parseBlock(workspaceYaml, "overrides:"), (range, name) =>
+    range === "catalog:" ? requireVersion(catalog, name) : range,
+  );
+
+const parseBlock = (workspaceYaml: string, header: string): Record<string, string> => {
+  const entries: Record<string, string> = {};
+  let inBlock = false;
   for (const line of workspaceYaml.split("\n")) {
     if (/^\S/.test(line)) {
-      inCatalog = line.trim() === "catalog:";
+      inBlock = line.trim() === header;
       continue;
     }
-    if (!inCatalog) continue;
+    if (!inBlock) continue;
     const match = /^\s+("?)([^"\s:]+(?:\/[^"\s:]+)?)\1:\s*"?([^"\s#]+)"?/.exec(line);
-    if (match?.[2] && match[3]) catalog[match[2]] = match[3];
+    if (match?.[2] && match[3]) entries[match[2]] = match[3];
   }
-  return catalog;
+  return entries;
 };
 
 /** Root package.json: name, packageManager, workspaces, and scripts for the chosen manager. */
 export const rootPackageJson = (pkg: PackageJson, settings: ProjectSettings): PackageJson => {
-  const { packageManager: pm, catalog } = settings;
+  const { packageManager: pm, catalog, overrides } = settings;
   const scripts = mapValues(asStringRecord(pkg["scripts"]), (script) => rewriteScript(script, pm));
   const base: PackageJson = {
     ...pkg,
@@ -85,14 +102,14 @@ export const rootPackageJson = (pkg: PackageJson, settings: ProjectSettings): Pa
       return {
         ...base,
         workspaces: { packages: workspaceGlobs, catalog },
-        overrides: { effect: requireVersion(catalog, "effect") },
+        overrides,
         trustedDependencies,
       };
     case "npm":
       return {
         ...resolveDependencies(base, settings),
         workspaces: workspaceGlobs,
-        overrides: { effect: requireVersion(catalog, "effect") },
+        overrides,
       };
   }
 };

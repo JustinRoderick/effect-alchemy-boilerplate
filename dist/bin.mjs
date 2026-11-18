@@ -16359,22 +16359,27 @@ var toStackName = (packageName) => {
   if (pascal.length === 0) return templateStackName;
   return /^[0-9]/.test(pascal) ? `App${pascal}` : pascal;
 };
-var parseCatalog = (workspaceYaml) => {
-  const catalog = {};
-  let inCatalog = false;
+var parseCatalog = (workspaceYaml) => parseBlock(workspaceYaml, "catalog:");
+var parseOverrides = (workspaceYaml, catalog) => mapValues(
+  parseBlock(workspaceYaml, "overrides:"),
+  (range2, name) => range2 === "catalog:" ? requireVersion(catalog, name) : range2
+);
+var parseBlock = (workspaceYaml, header) => {
+  const entries = {};
+  let inBlock = false;
   for (const line of workspaceYaml.split("\n")) {
     if (/^\S/.test(line)) {
-      inCatalog = line.trim() === "catalog:";
+      inBlock = line.trim() === header;
       continue;
     }
-    if (!inCatalog) continue;
+    if (!inBlock) continue;
     const match7 = /^\s+("?)([^"\s:]+(?:\/[^"\s:]+)?)\1:\s*"?([^"\s#]+)"?/.exec(line);
-    if (match7?.[2] && match7[3]) catalog[match7[2]] = match7[3];
+    if (match7?.[2] && match7[3]) entries[match7[2]] = match7[3];
   }
-  return catalog;
+  return entries;
 };
 var rootPackageJson = (pkg, settings) => {
-  const { packageManager: pm, catalog } = settings;
+  const { packageManager: pm, catalog, overrides } = settings;
   const scripts = mapValues(asStringRecord(pkg["scripts"]), (script) => rewriteScript(script, pm));
   const base = {
     ...pkg,
@@ -16389,14 +16394,14 @@ var rootPackageJson = (pkg, settings) => {
       return {
         ...base,
         workspaces: { packages: workspaceGlobs, catalog },
-        overrides: { effect: requireVersion(catalog, "effect") },
+        overrides,
         trustedDependencies
       };
     case "npm":
       return {
         ...resolveDependencies(base, settings),
         workspaces: workspaceGlobs,
-        overrides: { effect: requireVersion(catalog, "effect") }
+        overrides
       };
   }
 };
@@ -16622,12 +16627,15 @@ Installing dependencies with ${packageManager2}\u2026
     const directory2 = path.resolve(options.directory);
     yield* ensureEmpty(directory2);
     const name = toPackageName(path.basename(directory2));
+    const workspaceYaml = yield* readTemplateFile("pnpm-workspace.yaml");
+    const catalog = parseCatalog(workspaceYaml);
     const settings = {
       name,
       stackName: toStackName(name),
       packageManager: options.packageManager,
       packageManagerVersion: yield* packageManagerVersion(options),
-      catalog: parseCatalog(yield* readTemplateFile("pnpm-workspace.yaml"))
+      catalog,
+      overrides: parseOverrides(workspaceYaml, catalog)
     };
     for (const file of yield* listFiles(source.templateDir)) {
       yield* renderFile(file, directory2, settings);

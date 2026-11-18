@@ -45,12 +45,17 @@ catalog:
   react: 19.3.0
   react-dom: 19.3.0
   typescript: 7.0.2
-  vite: 8.3.4
+  vite: 8.3.7
   vitest: 5.0.3
 
 # Two copies of effect break service identity: force every dependent onto the catalog version.
+# The rest lift security fixes past exact pins in alchemy's @prisma/dev and chevrotain.
 overrides:
   effect: "catalog:"
+  "@hono/node-server": ^1.19.18
+  hono: ^4.13.16
+  lodash: ^4.18.0
+  valibot: ^1.4.2
 
 # Dependencies allowed to run install scripts (pnpm 11+ uses allowBuilds, pnpm 10 onlyBuiltDependencies).
 allowBuilds:
@@ -359,6 +364,7 @@ two flavors from it (see `src/Template.ts` in the boilerplate repo):
 | Workspaces | `pnpm-workspace.yaml` | `package.json` `workspaces.packages` | `package.json` `workspaces` |
 | Catalog | `catalog:` in `pnpm-workspace.yaml` | `workspaces.catalog`, still `catalog:` | Exact versions written into each `package.json` |
 | Internal packages | `workspace:*` | `workspace:*` | `*` |
+| Overrides | `overrides` in `pnpm-workspace.yaml` | `overrides` in `package.json`, same entries | `overrides` in `package.json`, same entries |
 | Install scripts | `allowBuilds` | `trustedDependencies` | Allowed by default (npm 11 warns) |
 | Lockfile | The template's `pnpm-lock.yaml` (v9) | Generated on install | Generated on install |
 | Running scripts | `pnpm dev` (`pnpm run deploy`: `deploy` is a pnpm built-in) | `bun run <script>` (`bun test` is Bun's own runner) | `npm run <script> -- <args>` |
